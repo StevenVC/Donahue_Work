@@ -6,7 +6,7 @@ Created on Mon Jul 11 12:43:11 2022
 
 # import sherpa
 import sherpa.astro.ui as sh
-# import ciao_contrib.all
+import ciao_contrib.all
 
 def gAbsorber_powerlaw(id, index, nH):
     '''
@@ -21,15 +21,11 @@ def gAbsorber_powerlaw(id, index, nH):
     i_n = str(index)
 
     # set source model
-    gal_abs = 'xsphabs.abs' + i_n
-    pow_law = 'xspowerlaw.p' + i_n
-
-    # model = f'xsphabs.abs{i_n} * xspowerlaw.p{i_n}'
-
-    sh.set_source(id, gal_abs + '*' + pow_law)
+    model = f'xsphabs.abs{i_n} * powlaw1d.p{i_n}'
+    sh.set_source(id, model)
     
     # set model components
-    sh.set_par('abs' + i_n + '.nH', val=nH, frozen=True)
+    sh.set_par(f'abs{i_n}.nH', val=nH, frozen=True)
 
     return
 
@@ -60,16 +56,14 @@ def gAbsorber_zAbsorber_powerlaw(id, index, nH, redshift):
     # set source model
     i_n = str(index)
 
-    gal_abs = 'xsphabs.abs' + i_n
-    red_abs = 'xszphabs.zabs' + i_n
-    pow_law = 'xspowerlaw.p' + i_n
-    sh.set_source(id, gal_abs + '*' + red_abs + '*' + pow_law)
+    model = f'xsphabs.abs{i_n} * xszphabs.zabs{i_n} * powlaw1d.p{i_n}'
+    sh.set_source(id, model)
     
     # set model components
-    sh.set_par('abs' + i_n + '.nH', val=nH, frozen=True)
+    sh.set_par(f'abs{i_n}.nH', val=nH, frozen=True)
 
-    sh.set_par('zabs' + i_n + '.nH', val=0, min=0, frozen=False)
-    sh.set_par('zabs' + i_n + '.redshift', val=redshift, frozen=False)
+    sh.set_par(f'zabs{i_n}.nH', val=0, min=0, frozen=False)
+    sh.set_par(f'zabs{i_n}.redshift', val=redshift, frozen=False)
 
 
 def gAbsorber_zAbsorber_emissionSpec_powerlaw(id, index, nH, redshift, kT):
@@ -103,24 +97,19 @@ def gAbsorber_zAbsorber_emissionSpec_powerlaw(id, index, nH, redshift, kT):
     # set source model
     i_n = str(index)
 
-    gal_abs = 'xsphabs.abs' + i_n
-    red_abs = 'xszphabs.zabs' + i_n
-    apec_e_spec = 'xsapec.apec' + i_n
-    pow_law = 'xspowerlaw.p' + i_n
-
-    # sh.set_source(xsphabs.abs1 * xszphabs.zabs1 * (xsapec.apec1 + xspowerlaw.p1))
-    sh.set_source(id, gal_abs + '*' + red_abs + '* (' + apec_e_spec + '+' + pow_law + ')')
+    model = f'xsphabs.abs{i_n} * xszphabs.zabs{i_n} * (xsapec.apec{i_n} + powlaw1d.p{i_n})'
+    sh.set_source(id, model)
 
     # set model components
-    sh.set_par('abs' + i_n + '.nH', val=nH, frozen=True)
+    sh.set_par(f'abs{i_n}.nH', val=nH, frozen=True)
 
-    sh.set_par('zabs' + i_n + '.nH', val=0, min=0, frozen=False)
-    sh.set_par('zabs' + i_n + '.redshift', val=redshift, frozen=False)
+    sh.set_par(f'zabs{i_n}.nH', val=0, min=0, frozen=False)
+    sh.set_par(f'zabs{i_n}.redshift', val=redshift, frozen=False)
 
-    sh.set_par('apec' + i_n + '.kT', val=kT, frozen=True)
-    sh.set_par('apec' + i_n + '.Abundanc', val=1, frozen=True)
-    sh.set_par('apec' + i_n + '.redshift', val=redshift, frozen=True)
-    sh.set_par('apec' + i_n + '.norm', frozen=False)
+    sh.set_par(f'apec{i_n}.kT', val=kT, frozen=True)
+    sh.set_par(f'apec{i_n}.Abundanc', val=1, frozen=True)
+    sh.set_par(f'apec{i_n}.redshift', val=redshift, frozen=True)
+    sh.set_par(f'apec{i_n}.norm', frozen=False)
 
 
 def gAbsorber_pAbsorber_powerlaw(id, index, nH, redshift, CvrFract):
@@ -152,7 +141,7 @@ def gAbsorber_pAbsorber_powerlaw(id, index, nH, redshift, CvrFract):
     # set source model
     i_n = str(index)
     
-    model = f'xsphabs.abs{i_n} * xszpcfabs.pabs{i_n} * xspowerlaw.p{i_n}'
+    model = f'xsphabs.abs{i_n} * xszpcfabs.pabs{i_n} * powlaw1d.p{i_n}'
     
     sh.set_source(id, model)
     
