@@ -1,11 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pds
 import csv
 import configparser
 import sys
 import logging
 
-import astropy.units as apu
+import astropy.units as au
 import sherpa
 import sherpa.astro.ui as sh
 import ciao_contrib.all
@@ -46,8 +47,8 @@ conf_file.read('config.ini')
 data_path = conf_file['PATHS']['data_path']
 stat = conf_file['FITTING']['stat']
 
-obslo = conf_file['FLUX']['obslo']
-obshi = conf_file['FLUX']['obshi']
+obslo = float(conf_file['FLUX']['obslo'])
+obshi = float(conf_file['FLUX']['obshi'])
 
 
 '''
@@ -76,6 +77,27 @@ data_load_array = np.array(data_dir_names, dtype=object)
 for i in range(n_sources):
     data_load_array[i] = data_path + '/' + data_dir_names[i] + '/' + data_dir_names[i] + 'pc.pi'
 
+col_labels = np.array([
+    'Source',
+    'H_0 [km / (Mpc s)]',
+    'Ω_m',
+    'Ω_Λ',
+    'Redshift [z]',
+    'D_L [Mpc]',
+    'Count Rate (2.0-10.0 keV) [s]',
+    'Count Rate +/-',
+    'Kcorr',
+    'Observed Flux (2.0-10.0 keV) [erg/cm^2/s]',
+    '-1 Sigma',
+    '+1 Sigma',
+    'Luminosity (2.0-10.0 keV) [erg/s]',
+    '-1 Sigma',
+    '+1 Sigma'
+]) 
+
+temp_array = np.zeros((n_sources, len(col_labels)))
+
+results_DF = pds.DataFrame(data = temp_array, columns=col_labels)
 
 '''
 Load data into sherpa environment
@@ -89,17 +111,30 @@ Notes:
 '''
 logging.basicConfig(level=logging.INFO, filename="fit.log", filemode="w")
 logger = logging.getLogger("sherpa")
-logger.setLevel(logging.ERROR)
+logger.setLevel(logging.WARN)
 
-sh.clean()
-sh.set_stat('chi2xspecvar') # set fitting/error statistic to use
+sh.clean() # clean sherpa env
 
-temp = 2
+# set fitting/error statistic to use, in this case chi2Gehrels is used due 
+# to the possibility of 0 counts in a bin
+sh.set_stat('chi2gehrels')
+# set fitting optimization method to neldermead since fitting parameters 
+# are suspected to be correlated
+sh.set_method('neldermead')
 
-for i in range(temp):
+# for_index = np.array(0,n_sources)
+for_index = np.array([
+    0,
+    1
+])
+
+for i in for_index:
+    data_row = np.copy(col_labels)
+
     c_d_id = data_dir_names[i] # temp save current data id (c_d_id)
     
     model_type = data_model[i]
+    # model_type = 'gp'
 
     nH = data_nH[i]
     z = data_redshift[i]
@@ -132,33 +167,38 @@ for i in range(temp):
     else:
         sys.exit('Model type + ' + model_type + ', is undefined!!')
 
-    bkg_model =  'abs' + str(i) + ' * powlaw1d.bkgp' + str(i)
+    bkg_model = f'abs{i} * powlaw1d.bkgp{i}'
     sh.set_bkg_model(c_d_id, bkg_model)
 
     # run fit on current source
-    sh.simulfit(c_d_id)
+    sh.fit(c_d_id)
+    fit_res = sh.get_fit_results()
 
-    print('\n1')
+    print('\nFit Results:')
+    print(fit_res.format(),'\n')
+
     sh.covar(c_d_id)
     covar_results = sh.get_covar_results()
     covar_matrix = covar_results.extra_output
-    # covar_err = covar_results.parmaxes
-    print('\n2')
 
-    # print(covar_err)
-    # covar_err = np.array(covar_err, dtype=float)
-    # print(type(covar_err[0]))
+    print('\nCovariance (parameter confidence interval estimation) Results:')
+    print(covar_results.format(), '\n')
 
+
+
+    '''
+    Calculate the observed and rest-frame fluxes
+    '''
     # calculate the median flux, and errors via random sampling of the
     # model parameters (within their ranges) along a normal distribution.
     # This assumes the parameters are correlated in some way
     sample_flux_res = sh.sample_flux(
-        lo = obslo, hi = obshi, id = c_d_id, 
+        lo = obslo, hi = obshi, id = c_d_id,
         scales = covar_matrix, correlated=True, num=1000
         )
 
     # this returns a 3 element array containing the median, upper and lower 
-    # 1-sigma limits
+    # 1-sigma limits from the calculated flux distribution
     obs_flux_res = sample_flux_res[0]
 
     # calculate the kcorrection that converts from the observed energy band
@@ -166,3 +206,62 @@ for i in range(temp):
     # Effectively this function is doing the following calculation
     # kcorr = rest_flux / obs_flux
     kcorr = sh.calc_kcorr(z, obslo, obshi, id=c_d_id)
+
+    r_f_flux_res = obs_flux_res * kcorr
+
+    print('\nObs flux : [val, +1 sigma, -1 sigma] [erg/cm^2/s]')
+    print(obs_flux_res)
+    print('\nRest-frame flux : [val, +1 sigma, -1 sigma] [erg/cm^2/s]')
+    print(r_f_flux_res)
+
+
+
+    '''
+    Calculate the observed and rest-frame luminosities
+    '''
+    D_l = Planck15.luminosity_distance(z)
+
+    units = au.erg / au.cm / au.cm / au.s
+
+    l_f_obs = 4 * np.pi * D_l * D_l * obs_flux_res * units
+    l_f_r_f = 4 * np.pi * D_l * D_l * r_f_flux_res * units
+
+    l_f_obs.to(au.erg/au.s)
+    l_f_r_f.to(au.erg/au.s)
+
+    print('\nObs luminosity : [val, +1 sigma, -1 sigma] [erg/s]')
+    print(l_f_obs.value)
+    print('\nRest-frame luminosity : [val, +1 sigma, -1 sigma] [erg/s]')
+    print(l_f_obs.value)
+    print()
+
+
+
+    '''
+    Calculate count rate
+    '''
+    c_rate = 1
+    c_rate_err = 1
+
+
+    
+    '''
+    Saving data to output csv
+    '''
+    results_DF.iat[i, 0] = c_d_id
+    results_DF.iat[i, 1] = Planck15.H0.value
+    results_DF.iat[i, 2] = Planck15.Om0
+    results_DF.iat[i, 3] = Planck15.Ode0
+    results_DF.iat[i, 4] = z
+    results_DF.iat[i, 5] = D_l.value
+    results_DF.iat[i, 6] = c_rate
+    results_DF.iat[i, 7] = c_rate_err
+    results_DF.iat[i, 8] = kcorr
+    results_DF.iat[i, 9] = r_f_flux_res[0]
+    results_DF.iat[i, 10] = r_f_flux_res[1]
+    results_DF.iat[i, 11] = r_f_flux_res[2]
+    results_DF.iat[i, 12] = l_f_r_f[0].value
+    results_DF.iat[i, 13] = l_f_r_f[1].value
+    results_DF.iat[i, 14] = l_f_r_f[2].value
+
+results_DF.to_csv('fit_results.csv')
